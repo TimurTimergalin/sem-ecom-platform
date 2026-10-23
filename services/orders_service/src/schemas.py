@@ -7,23 +7,22 @@ MAX_AMOUNT = Decimal("9999999999.99")
 
 
 class ItemIn(BaseModel):
-    sku_id: int = Field(gt=0)
+    sku_id: str = Field(min_length=1, max_length=36)
     name: str = Field(min_length=1, max_length=255)
     image: str = Field(min_length=1, max_length=2048)
     price: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     quantity: int = Field(gt=0)
 
 
-class CreateOrderRequest(BaseModel):
-    items: list[ItemIn] = Field(min_length=1)
-    user_id: int = Field(gt=0)
+class OrderGroupIn(BaseModel):
+    seller_id: str = Field(min_length=1, max_length=36)
+    yookassa_account_id: str = Field(default="", max_length=128)
     address: str = Field(min_length=1, max_length=1024)
     delivery_type: str = Field(min_length=1, max_length=64)
-    idempotency_key: str = Field(min_length=1, max_length=128)
-    payout_token: str = Field(min_length=1, max_length=512)
+    items: list[ItemIn] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def unique_skus_and_amount(self) -> "CreateOrderRequest":
+    def unique_skus_and_amount(self) -> "OrderGroupIn":
         sku_ids = [item.sku_id for item in self.items]
         if len(sku_ids) != len(set(sku_ids)):
             raise ValueError("items contain a duplicate sku_id")
@@ -35,8 +34,14 @@ class CreateOrderRequest(BaseModel):
         return self
 
 
+class CreateOrderRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=36)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    groups: list[OrderGroupIn] = Field(min_length=1)
+
+
 class ItemOut(BaseModel):
-    sku_id: int
+    sku_id: str
     name: str
     image: str
     price: Decimal
@@ -53,7 +58,7 @@ class Skipped(BaseModel):
 
 
 class ConfirmOut(BaseModel):
-    order_id: int
+    order_id: str
     status: str
     receival_code: str
 
@@ -63,17 +68,18 @@ class CompleteRequest(BaseModel):
 
 
 class CompleteOut(BaseModel):
-    order_id: int
+    order_id: str
     status: str
 
 
 class CancelOut(BaseModel):
-    order_id: int
+    order_id: str
     status: str
 
 
 class OrderListItem(BaseModel):
-    order_id: int
+    order_id: str
+    seller_id: str
     images: list[str]
     status: str
 
@@ -95,8 +101,9 @@ class PaymentPublic(BaseModel):
 
 
 class OrderDetail(BaseModel):
-    order_id: int
-    user_id: int
+    order_id: str
+    user_id: str
+    seller_id: str
     status: str
     delivery_type: str
     address: str
@@ -108,6 +115,7 @@ class OrderDetail(BaseModel):
     items: list[ItemOut]
     deal: DealPublic | None
     payment: PaymentPublic | None
+    multi_order_id: str | None = None
 
 
 class DebugEvent(BaseModel):
@@ -118,7 +126,7 @@ class DebugEvent(BaseModel):
 
 
 class DebugOrderEvent(DebugEvent):
-    order_id: int
+    order_id: str
 
 
 class DebugDealEvent(DebugEvent):
@@ -137,7 +145,7 @@ class DebugDeal(BaseModel):
     deal_id: str
     status: str
     last_state: dict
-    order_id: int
+    order_id: str
     created_at: datetime
 
 
@@ -160,12 +168,14 @@ class DebugRefund(BaseModel):
 
 
 class OrderDebug(BaseModel):
-    order_id: int
+    order_id: str
     creation_idempotency_key: str
     deal_idempotency_key: str
     payout_idempotency_key: str
-    payout_token: str
-    user_id: int
+    payout_token: str | None = None
+    multi_order_id: str | None = None
+    user_id: str
+    seller_id: str
     delivery_type: str
     status: str
     receival_code: str | None
@@ -184,17 +194,27 @@ class OrderDebug(BaseModel):
     refund_events: list[DebugRefundEvent]
 
 
+class GroupOrderOut(BaseModel):
+    order_id: str
+    seller_id: str
+    status: str
+    buyer_amount: Decimal
+
+
 class OrderOut(BaseModel):
-    order_id: int
-    user_id: int
+    order_id: str
+    user_id: str
+    seller_id: str
     address: str
     delivery_type: str
     status: str
     buyer_amount: Decimal
     seller_amount: Decimal
     items: list[ItemOut]
-    deal: DealOut
+    deal: DealOut | None = None
     confirmation_url: str
+    multi_order_id: str
+    orders: list[GroupOrderOut]
 
 
 def items_total(items: list[ItemIn]) -> Decimal:

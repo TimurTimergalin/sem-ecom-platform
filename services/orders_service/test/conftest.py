@@ -5,10 +5,8 @@ import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy import event
 
 from models import Base
-from models.order import Order
 
 
 @compiles(JSONB, "sqlite")
@@ -42,14 +40,6 @@ def deal_response(deal_id="dl-1", status="opened"):
 @pytest.fixture
 async def sessions(monkeypatch):
     engine = create_async_engine("sqlite+aiosqlite://")
-    next_id = {"value": 0}
-
-    def assign_order_id(mapper, connection, target):
-        if target.order_id is None:
-            next_id["value"] += 1
-            target.order_id = next_id["value"]
-
-    event.listen(Order, "before_insert", assign_order_id)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -63,7 +53,6 @@ async def sessions(monkeypatch):
     monkeypatch.setattr("reads.run_serializable", run)
     monkeypatch.setattr("db.run_serializable", run)
     yield factory
-    event.remove(Order, "before_insert", assign_order_id)
     await engine.dispose()
 
 
@@ -72,19 +61,10 @@ def yookassa(monkeypatch):
     calls = []
     sequence = {"n": 0}
 
-    def create_deal(params, idempotency_key=None):
-        sequence["n"] += 1
-        calls.append(("deal", idempotency_key, params))
-        return deal_response(deal_id=f"dl-{sequence['n']}")
-
     def create_payment(params, idempotency_key=None):
         sequence["n"] += 1
         calls.append(("payment", idempotency_key, params))
         return payment_response(payment_id=f"pay-{sequence['n']}")
-
-    def create_payout(params, idempotency_key=None):
-        calls.append(("payout", idempotency_key, params))
-        return Remote(id="po-1", status="succeeded")
 
     def create_refund(params, idempotency_key=None):
         calls.append(("refund", idempotency_key, params))
@@ -92,17 +72,19 @@ def yookassa(monkeypatch):
 
     def find_payment(payment_id):
         calls.append(("find_payment", payment_id))
-        return payment_response(payment_id=payment_id, status="succeeded")
+        return payment_response(payment_id=payment_id, status="pending")
+
+    def cancel_payment(payment_id, idempotency_key=None):
+        calls.append(("cancel", idempotency_key, payment_id))
+        return payment_response(payment_id, "canceled")
 
     def find_deal(deal_id):
         calls.append(("find_deal", deal_id))
         return deal_response(deal_id=deal_id, status="opened")
 
-    monkeypatch.setattr("service.Deal.create", create_deal)
     monkeypatch.setattr("service.YooKassaPayment.create", create_payment)
     monkeypatch.setattr("service.YooKassaPayment.find_one", find_payment)
-    monkeypatch.setattr("service.YooKassaPayment.cancel", lambda payment_id, idempotency_key=None: payment_response(payment_id, "canceled"))
-    monkeypatch.setattr("service.Payout.create", create_payout)
+    monkeypatch.setattr("service.YooKassaPayment.cancel", cancel_payment)
     monkeypatch.setattr("service.YooKassaRefund.create", create_refund)
     monkeypatch.setattr("reads.Deal.find_one", find_deal)
     monkeypatch.setattr("reads.YooKassaPayment.find_one", find_payment)

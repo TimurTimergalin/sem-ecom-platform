@@ -2,7 +2,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -26,8 +25,10 @@ async def run_serializable(
     for attempt in range(ATTEMPTS):
         try:
             async with sessions() as session:
+                # Isolation is set on the engine. SET TRANSACTION inside begin()
+                # runs after asyncpg has already started a transaction and closes
+                # the connection.
                 async with session.begin():
-                    await session.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
                     return await work(session)
         except DBAPIError as exc:
             sqlstate = getattr(exc.orig, "sqlstate", None)

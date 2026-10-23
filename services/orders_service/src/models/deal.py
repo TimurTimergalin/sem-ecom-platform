@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,5 +13,5 @@ class Deal(Base):
     deal_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     status: Mapped[str] = mapped_column(String(64))
     last_state: Mapped[dict] = mapped_column(JSONB)
-    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("orders.order_id"), unique=True)
+    order_id: Mapped[str] = mapped_column(String(36), ForeignKey("orders.order_id"), unique=True)
     created_at: Mapped[datetime] = created_at_column()

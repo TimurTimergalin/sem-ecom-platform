@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     yookassa_account_id: str
     yookassa_secret_key: str
     yookassa_return_url: str
+    yookassa_fake: bool = False
     yookassa_api_url: str = "https://api.yookassa.ru/v3"
     yookassa_timeout: int = 1800
     yookassa_max_attempts: int = 3
